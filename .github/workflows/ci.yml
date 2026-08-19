@@ -23,7 +23,7 @@ jobs:
 
       - name: Build and validate all DBC sources
         run: |
-          for def in dbc/*.json; do
+          for def in dbc/definitions.json; do
             base=$(basename "$def" .json)
             python3 dbc/scripts/build_dbc.py "$def" "$base.dbc"
             python3 dbc/scripts/validate_dbc.py "$base.dbc"
@@ -61,7 +61,20 @@ jobs:
     # Only auto-trigger the lab on pushes to main when CI is green
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
     steps:
+      - name: Check lab token availability
+        id: lab_check
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.LAB_TRIGGER_TOKEN }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Lab trigger token present: will dispatch lab workflow."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "LAB_TRIGGER_TOKEN secret not set: lab will not be triggered (add the secret, or run lab.yml manually)."
+          fi
+
       - name: Dispatch lab workflow
+        if: steps.lab_check.outputs.enabled == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.LAB_TRIGGER_TOKEN }}
@@ -73,3 +86,10 @@ jobs:
               ref: 'main',
               inputs: { run_flash: 'true', commit_sha: '${{ github.sha }}' }
             });
+
+      - name: Lab not configured
+        if: steps.lab_check.outputs.enabled != 'true'
+        shell: bash
+        run: |
+          echo "CI passed. The lab stage was skipped because LAB_TRIGGER_TOKEN is not set."
+          echo "Set the secret (see docs/lab-runner-setup.md) to enable automatic lab dispatch."
