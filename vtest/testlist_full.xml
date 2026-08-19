@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full regression test list: nightly / release-gating run.
+     Replace entries with your real vTESTstudio test modules. -->
+<TestList name="FullRegression">
+  <TestModule path="Full_DiagnosticServices.can" />
+  <TestModule path="Full_FlashRobustness.can" />
+  <TestModule path="Full_FanControlBoundary.can" />
+  <TestModule path="Full_EngineDataSignals.can" />
+</TestList>

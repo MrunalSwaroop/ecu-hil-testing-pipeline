@@ -1,0 +1,56 @@
+/*@!Encoding:1252*/
+/*
+ * Smoke test: ECU must enter extended diagnostic session (0x10 03) and echo the
+ * engine data message on the bus. Example template - adapt to your ECU.
+ */
+
+includes
+{
+}
+
+variables
+{
+  msTimer tTimeout;
+  int gSessionOk;
+  int gEngineDataSeen;
+}
+
+testcase TC_EnterExtendedSession()
+{
+  message 0 req;
+  req.id = 0x700;
+  req.dlc = 8;
+  req.byte(0) = 2;
+  req.byte(1) = 0x10;
+  req.byte(2) = 0x03;
+  output(req);
+
+  setTimer(tTimeout, 2000);
+  testWaitForTimeout(tTimeout);
+
+  if (gSessionOk)
+    TestStepPass("DiagnosticSession", "Extended session entered (0x50 03)");
+  else
+    TestStepFail("DiagnosticSession", "No positive response to 0x10 03");
+}
+
+testcase TC_EngineDataPresent()
+{
+  testWaitForTimeout(tTimeout);
+
+  if (gEngineDataSeen)
+    TestStepPass("EngineData", "EngineData message seen on bus");
+  else
+    TestStepFail("EngineData", "EngineData message not seen within timeout");
+}
+
+on message 0x708
+{
+  if (this.byte(1) == 0x50 && this.byte(2) == 0x03)
+    gSessionOk = 1;
+}
+
+on message EngineData
+{
+  gEngineDataSeen = 1;
+}

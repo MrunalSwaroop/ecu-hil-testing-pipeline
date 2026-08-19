@@ -1,0 +1,13 @@
+{
+  "powersupplies": [
+    { "name": "ECU 12V", "channel": 0, "min_v": 11.0, "max_v": 14.5, "ip": "192.168.1.50" }
+  ],
+  "bus_probe": { "channel": 0, "message_id": "0x100", "timeout_ms": 3000 },
+  "diagnostics": {
+    "enabled": false,
+    "ecu_tx_id": "0x700",
+    "ecu_rx_id": "0x708",
+    "dtc_limit": 0
+  },
+  "canoe": { "required": true }
+}

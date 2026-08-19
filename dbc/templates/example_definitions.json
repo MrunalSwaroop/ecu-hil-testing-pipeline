@@ -1,0 +1,107 @@
+{
+  "version": "",
+  "messages": [
+    {
+      "id": "0x305",
+      "name": "AngleMsg",
+      "dlc": 5,
+      "comment": "Steering angle request/response (from CAPL test node)",
+      "signals": [
+        {
+          "name": "Angle",
+          "start_bit": 7,
+          "length": 16,
+          "byte_order": "motorola",
+          "value_type": "signed",
+          "factor": 0.1,
+          "offset": 0.0,
+          "min": -1512,
+          "max": 1512,
+          "unit": "deg"
+        },
+        {
+          "name": "Byte2",
+          "start_bit": 16,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 255,
+          "unit": ""
+        },
+        {
+          "name": "Byte3",
+          "start_bit": 24,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 255,
+          "unit": ""
+        },
+        {
+          "name": "Byte4",
+          "start_bit": 32,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 255,
+          "unit": ""
+        }
+      ]
+    },
+    {
+      "id": "0x18FEF111",
+      "name": "CCVS",
+      "dlc": 8,
+      "cycle_time_ms": 100,
+      "comment": "J1939 CCVS - Current Vehicle Speed (PGN 0xFEF1, Source 0x11)",
+      "signals": [
+        {
+          "name": "WheelBasedVehicleSpeed",
+          "start_bit": 8,
+          "length": 16,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 0.00390625,
+          "offset": 0.0,
+          "min": 0,
+          "max": 250.996,
+          "unit": "km/h",
+          "comment": "Speed of the vehicle as calculated from wheel or tallshaft speed"
+        },
+        {
+          "name": "BrakeSwitch",
+          "start_bit": 28,
+          "length": 2,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 3,
+          "unit": ""
+        },
+        {
+          "name": "ParkingBrakeSwitch",
+          "start_bit": 2,
+          "length": 2,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 3,
+          "unit": ""
+        }
+      ]
+    }
+  ]
+}

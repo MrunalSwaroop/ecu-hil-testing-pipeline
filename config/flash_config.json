@@ -1,0 +1,13 @@
+{
+  "method": "uds",
+  "channel": 0,
+  "bitrate": 500000,
+  "ecu_tx_id": "0x700",
+  "ecu_rx_id": "0x708",
+  "tester_id": "0x7F0",
+  "security_level": 1,
+  "seed_key": null,
+  "block_size": 1024,
+  "max_retries": 3,
+  "timeout_s": 5
+}

@@ -1,0 +1,126 @@
+{
+  "version": "",
+  "messages": [
+    {
+      "id": "0x100",
+      "name": "EngineData",
+      "dlc": 8,
+      "comment": "Example ECU application message - engine data (HIL demo project)",
+      "signals": [
+        {
+          "name": "EngineSpeed",
+          "start_bit": 15,
+          "length": 16,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 0.25,
+          "offset": 0.0,
+          "min": 0,
+          "max": 16383.75,
+          "unit": "rpm"
+        },
+        {
+          "name": "EngineTemp",
+          "start_bit": 31,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "signed",
+          "factor": 1.0,
+          "offset": -40.0,
+          "min": -40,
+          "max": 215,
+          "unit": "degC"
+        },
+        {
+          "name": "EngineLoad",
+          "start_bit": 39,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 0.5,
+          "offset": 0.0,
+          "min": 0,
+          "max": 127.5,
+          "unit": "%"
+        },
+        {
+          "name": "EngineState",
+          "start_bit": 47,
+          "length": 4,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 15,
+          "unit": "",
+          "comment": "0=off 1=crank 2=run 3=fault"
+        }
+      ]
+    },
+    {
+      "id": "0x200",
+      "name": "FanControl",
+      "dlc": 4,
+      "comment": "Fan control request from test node to ECU (HIL demo project)",
+      "signals": [
+        {
+          "name": "FanSpeedRequest",
+          "start_bit": 7,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 100,
+          "unit": "%"
+        },
+        {
+          "name": "FanEnable",
+          "start_bit": 8,
+          "length": 1,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 1,
+          "unit": ""
+        }
+      ]
+    },
+    {
+      "id": "0x18FEF100",
+      "name": "DiagnosticResponse",
+      "dlc": 8,
+      "comment": "UDS diagnostic response echo for functional testing (extended ID, source 0x00)",
+      "signals": [
+        {
+          "name": "ServiceId",
+          "start_bit": 7,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 255,
+          "unit": ""
+        },
+        {
+          "name": "SubFunction",
+          "start_bit": 15,
+          "length": 8,
+          "byte_order": "intel",
+          "value_type": "unsigned",
+          "factor": 1.0,
+          "offset": 0.0,
+          "min": 0,
+          "max": 255,
+          "unit": ""
+        }
+      ]
+    }
+  ]
+}

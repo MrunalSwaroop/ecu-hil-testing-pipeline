@@ -1,0 +1,172 @@
+/*@!Encoding:1252*/
+/*
+ * FlashEcu.can - UDS-based ECU flash for the CANoe-side lab runner stage.
+ *
+ * This CAPL module is an alternative to the pure-python flasher (scripts/lab/flash_ecu.py,
+ * method "uds"). Use it when the Python CAN stack is not available but CANoe is.
+ *
+ * Sequence:
+ *   1. 0x10 0x03  - Extended diagnostic session
+ *   2. 0x27 0x01/0x02 - Security access (Seed & Key)
+ *   3. 0x31 0x01  - Erase memory routine (if supported)
+ *   4. 0x34/0x36/0x37 - Sequential download
+ *   5. 0x11 0x01  - ECU reset (application)
+ *   6. 0xF1 0x95  - Read software version, compare against expected -> set TestStep pass/fail
+ *
+ * Invocation from the command line (lab.yml, method "capl"):
+ *   CANoeCmd.exe /noinit /batch /exit C:\path\to\FlashEcu.cfg
+ *
+ * Adapt ECU addresses, Key generation and firmware source to your controller.
+ */
+
+includes
+{
+}
+
+variables
+{
+  msTimer tFlash;
+  msTimer tTimeout;
+
+  dword   gEcuTxId    = 0x700;   // tester -> ECU (physical request)
+  dword   gEcuRxId    = 0x708;   // ECU -> tester (physical response)
+  dword   gTesterId   = 0x7F0;
+
+  byte    gFirmware[128*1024];   // load firmware bytes here (from file or test node)
+  dword   gFirmwareLen;
+  dword   gBlockNo;
+
+  char    gExpectedVersion[64];
+  char    gReadVersion[64];
+
+  int     gFlashPassed;
+}
+
+/* ---- helpers ----------------------------------------------------------- */
+
+void UdsSend(byte service, byte sub, byte data[], dword len)
+{
+  message 0 gReq;
+  gReq.id = gEcuTxId;
+  gReq.dlc = 8;
+  gReq.byte(0) = (byte)(len + 1);
+  gReq.byte(1) = service;
+  if (len > 0)
+    gReq.byte(2) = sub;
+  gReq.byte(3) = data[0]; // simplify: single-byte sub-function usage in this POC
+  output(gReq);
+}
+
+/* ---- flash flow -------------------------------------------------------- */
+
+on start
+{
+  gFlashPassed = 0;
+  // 1) Extended session
+  UdsSend(0x10, 0x03, data(), 0);
+  setTimer(tTimeout, 2000);
+}
+
+on timer tTimeout
+{
+  // simple timeout handler - mark failure and stop measurement
+  write("FLASH TIMEOUT - aborting");
+  gFlashPassed = 0;
+  TestStepFail("ECU Flash", "Timeout waiting for ECU response");
+  measurementStop();
+}
+
+/* 2) Security access response -> unlock, then request erase */
+on message 0x708
+{
+  byte pdu_service = this.byte(1);
+  if (pdu_service == 0x67)   // positive SecurityAccess
+  {
+    write("Security access granted (level 1)");
+    // 3) Erase memory
+    UdsSend(0x31, 0x01, data(), 0);
+  }
+  else if (pdu_service == 0x71) // positive RoutineControl
+  {
+    // 4) Start sequential download
+    dword fwLen = gFirmwareLen;
+    byte dlData[7];
+    dlData[0] = 0x00; dlData[1] = 0x44;
+    dlData[2] = 0x08; dlData[3] = 0x00; dlData[4] = 0x00; // addr 0x08000000
+    dlData[5] = (byte)(fwLen >> 16); dlData[6] = (byte)((fwLen >> 8) & 0xFF);
+    UdsSend(0x34, 0x00, dlData, 7);
+    gBlockNo = 1;
+  }
+  else if (pdu_service == 0x74) // positive RequestDownload
+  {
+    // send first data block (simplified: one block POC)
+    message 0 gBlock;
+    gBlock.id = gEcuTxId;
+    gBlock.dlc = 8;
+    gBlock.byte(0) = 0xFF;           // ISO-TP first/consecutive frame marker (simplified)
+    gBlock.byte(1) = (byte)(gBlockNo & 0xFF);
+    dword i;
+    for (i = 0; i < 6 && (gBlockNo - 1) * 6 + i < gFirmwareLen; i++)
+      gBlock.byte(2 + i) = gFirmware[(gBlockNo - 1) * 6 + i];
+    output(gBlock);
+  }
+  else if (pdu_service == 0x76) // positive TransferData
+  {
+    gBlockNo++;
+    if (gBlockNo * 6 < gFirmwareLen)
+    {
+      // send next block (same simplified scheme)
+      message 0 gBlock;
+      gBlock.id = gEcuTxId;
+      gBlock.dlc = 8;
+      gBlock.byte(0) = 0x20 | (byte)(gBlockNo & 0x0F); // ISO-TP CF
+      gBlock.byte(1) = (byte)(gBlockNo & 0xFF);
+      dword i;
+      for (i = 0; i < 6 && (gBlockNo - 1) * 6 + i < gFirmwareLen; i++)
+        gBlock.byte(2 + i) = gFirmware[(gBlockNo - 1) * 6 + i];
+      output(gBlock);
+    }
+    else
+    {
+      // 5) TransferExit
+      UdsSend(0x37, 0x00, data(), 0);
+    }
+  }
+  else if (pdu_service == 0x77) // positive TransferExit
+  {
+    // 6) ECU reset
+    UdsSend(0x11, 0x01, data(), 0);
+    setTimer(tFlash, 5000); // wait for reboot
+  }
+  else if (pdu_service == 0x51) // positive ECUReset
+  {
+    setTimer(tFlash, 5000);
+  }
+  else if (pdu_service == 0x71 && this.byte(2) == 0x95) // positive ReadDataByIdentifier F195
+  {
+    // version read back
+    dword i;
+    for (i = 0; i < elCount(gReadVersion) - 1 && i + 3 < this.dlc; i++)
+      gReadVersion[i] = (char)this.byte(3 + i);
+    gReadVersion[i] = 0;
+    if (strstr(gReadVersion, gExpectedVersion) >= 0)
+    {
+      gFlashPassed = 1;
+      TestStepPass("ECU Flash", "Flash OK, version verified: %s", gReadVersion);
+    }
+    else
+    {
+      gFlashPassed = 0;
+      TestStepFail("ECU Flash", "Version mismatch: read '%s', expected '%s'",
+                   gReadVersion, gExpectedVersion);
+    }
+    measurementStop();
+  }
+}
+
+on timer tFlash
+{
+  // 7) Read software version after reboot
+  UdsSend(0xF1, 0x95, data(), 0);
+  setTimer(tTimeout, 2000);
+}

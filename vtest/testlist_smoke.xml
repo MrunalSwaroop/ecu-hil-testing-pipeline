@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Smoke test list: fast regression guard run after every commit.
+     Replace entries with your real vTESTstudio test modules. -->
+<TestList name="Smoke">
+  <TestModule path="Smoke_DiagnosticSession.can" />
+  <TestModule path="Smoke_FanControl.can" />
+</TestList>

@@ -1,0 +1,116 @@
+# Lab runner workflow: executes on a self-hosted Windows runner (CANoe + vTESTstudio).
+# Triggered by workflow_dispatch from ci.yml, or manually from the Actions tab.
+#
+# Inputs:
+#   run_flash - "true" runs the ECU flash + version verification stage (default true)
+#   test_suite - "smoke" | "full" (default smoke)
+#   commit_sha - informational, stamped into reports
+name: HIL Lab Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_flash:
+        description: "Run ECU flash + version verification before testing"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      test_suite:
+        description: "Test suite to execute"
+        required: false
+        default: "smoke"
+        type: choice
+        options: ["smoke", "full"]
+      commit_sha:
+        description: "Commit SHA (informational)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  hil:
+    name: HIL test on lab bench
+    # NOTE: register this runner on your Windows lab PC (see docs/lab-runner-setup.md).
+    # Until a runner tagged 'hil-bench' is online, this job is skipped and CI still passes.
+    runs-on: self-hosted
+    if: contains(runner.labels, 'hil-bench')
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Show run metadata
+        shell: pwsh
+        run: |
+          Write-Output "Commit: ${{ github.sha }}  Branch: ${{ github.ref_name }}"
+          Write-Output "Flash: ${{ inputs.run_flash }}  Suite: ${{ inputs.test_suite }}"
+
+      - name: Bench pre-flight check
+        shell: pwsh
+        run: |
+          python scripts/lab/bench_preflight.py --config config/bench_profile.json
+
+      - name: Flash ECU and verify firmware version
+        if: inputs.run_flash == 'true'
+        shell: pwsh
+        run: |
+          python scripts/lab/flash_ecu.py `
+            --firmware firmware/ `
+            --config config/flash_config.json `
+            --expected-version ${{ github.sha }} `
+            --report out/flash_result.json
+
+      - name: DBC check-in (build, load, verify signals)
+        shell: pwsh
+        run: |
+          python scripts/lab/dbc_checkin.py `
+            --dbc-source dbc/definitions.json `
+            --dbc-out dbc/EngineData.dbc `
+            --verification dbc/verification_pairs.json `
+            --config config/canoe_config.cfg
+
+      - name: Build test CAPL
+        shell: pwsh
+        run: |
+          python scripts/lab/build_capl.py `
+            --config config/canoe_config.cfg `
+            --sources capl/
+
+      - name: Execute vTESTstudio test suite
+        shell: pwsh
+        run: |
+          $suite = if ("${{ inputs.test_suite }}" -eq "full") { "vtest/testlist_full.xml" } else { "vtest/testlist_smoke.xml" }
+          python scripts/lab/run_vtest.py `
+            --testlist $suite `
+            --config config/vtest_config.cfg `
+            --outdir out/vtest_results
+
+      - name: Parse results and ingest to report store
+        shell: pwsh
+        run: |
+          python scripts/ingestion/parse_results.py `
+            --vtest-xml out/vtest_results/*.xml `
+            --commit ${{ github.sha }} `
+            --firmware-version out/flash_result.json `
+            --runner ${{ runner.name }}
+          python scripts/ingestion/post_results.py --db out/results.db
+
+      - name: Post-run teardown (restore golden firmware, power down bench)
+        if: always()
+        shell: pwsh
+        run: |
+          python scripts/lab/bench_teardown.py --config config/bench_profile.json
+
+      - name: Upload native CANoe/vTESTstudio reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-native-reports
+          path: |
+            out/vtest_results/
+            out/flash_result.json
+          retention-days: 90

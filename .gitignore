@@ -1,0 +1,18 @@
+# Generated / runtime artifacts
+out/
+*.dll
+*.dbc
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dashboard/__pycache__/
+notes/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Secrets never belong in the repo
+*.key
+secrets.json

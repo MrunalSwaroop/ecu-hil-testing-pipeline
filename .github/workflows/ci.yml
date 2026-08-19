@@ -1,0 +1,75 @@
+# CI: cloud validation stage (runs on every push/PR, free GitHub runner).
+# - DBC build + validate (catches BA_ ordering, protected attributes, syntax errors)
+# - Python lint + pytest (mocked-CAN unit tests, no hardware)
+# - On green on `main`: automatically triggers the lab workflow (workflow_dispatch)
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  dbc-validation:
+    name: DBC build & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and validate all DBC sources
+        run: |
+          for def in dbc/*.json; do
+            base=$(basename "$def" .json)
+            python3 dbc/scripts/build_dbc.py "$def" "$base.dbc"
+            python3 dbc/scripts/validate_dbc.py "$base.dbc"
+          done
+
+      - name: Upload validated DBC artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbc-files
+          path: dbc/*.dbc
+
+  python-checks:
+    name: Python lint & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r python/requirements.txt
+
+      - name: Lint
+        run: ruff check python/ scripts/ || true
+
+      - name: Unit tests (mocked CAN, no hardware)
+        run: pytest python/tests -v --tb=short
+
+  trigger-lab:
+    name: Trigger lab runner
+    needs: [dbc-validation, python-checks]
+    runs-on: ubuntu-latest
+    # Only auto-trigger the lab on pushes to main when CI is green
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
+    steps:
+      - name: Dispatch lab workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LAB_TRIGGER_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'lab.yml',
+              ref: 'main',
+              inputs: { run_flash: 'true', commit_sha: '${{ github.sha }}' }
+            });

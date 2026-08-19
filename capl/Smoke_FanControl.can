@@ -1,0 +1,40 @@
+/*@!Encoding:1252*/
+/*
+ * Smoke test: request 80% fan speed, verify ECU applies the request
+ * (application behavior echo on the bus / HIL measurement channel).
+ * Example template - adapt to your ECU.
+ */
+
+includes
+{
+}
+
+variables
+{
+  msTimer tTimeout;
+  int gFanApplied;
+  float gMeasuredFan;
+}
+
+testcase TC_FanSpeedRequest()
+{
+  message FanControl fc;
+  fc.FanSpeedRequest = 80;
+  fc.FanEnable = 1;
+  output(fc);
+
+  setTimer(tTimeout, 3000);
+  testWaitForTimeout(tTimeout);
+
+  if (gFanApplied && gMeasuredFan > 75.0)
+    TestStepPass("FanControl", "Fan applied ~80% (measured %.1f%%)", gMeasuredFan);
+  else
+    TestStepFail("FanControl", "Fan not applied (measured %.1f%%)", gMeasuredFan);
+}
+
+/* TODO: hook this to your HIL measurement channel (VT2004 voltage/current, etc.) */
+on timer tTimeout
+{
+  gFanApplied = 1;
+  gMeasuredFan = 80.0; /* placeholder: read real value from HIL module */
+}

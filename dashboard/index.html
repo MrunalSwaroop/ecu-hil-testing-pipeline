@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECU HIL Test Dashboard</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
+    --pass: #22c55e; --fail: #ef4444; --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header .subtitle { color: var(--muted); font-size: 13px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 24px; display: grid; gap: 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .panel h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--border); font-weight: 500; }
+  td { padding: 8px; border-bottom: 1px solid var(--border); }
+  tr.run-row { cursor: pointer; }
+  tr.run-row:hover { background: #273449; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
+  .badge.PASS { background: rgba(34,197,94,.15); color: var(--pass); }
+  .badge.FAIL { background: rgba(239,68,68,.15); color: var(--fail); }
+  .badge.ERROR { background: rgba(245,158,11,.15); color: var(--warn); }
+  .mono { font-family: ui-monospace, "Cascadia Code", monospace; }
+  #chart { width: 100%; height: 220px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
+  #detail { display: none; }
+  #detail.open { display: block; }
+  .config { padding: 16px 24px; color: var(--muted); font-size: 12px; }
+  .config label { display: block; margin-bottom: 4px; }
+  .config input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; width: 320px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ECU HIL Test Dashboard</h1>
+    <div class="subtitle">CI/CD/CT pipeline results &mdash; commit &rarr; flash &rarr; test &rarr; report</div>
+  </div>
+</header>
+
+<div class="config">
+  <label for="apiBase">Results API base URL (lab PC running server.py)</label>
+  <input id="apiBase" type="text" value="http://localhost:8765">
+</div>
+
+<main>
+  <section class="panel">
+    <h2>Pass-rate trend</h2>
+    <canvas id="chart"></canvas>
+    <div id="trendEmpty" class="empty" style="display:none">No runs recorded yet. Runs appear here after the first
+      successful pipeline execution on the lab bench.</div>
+  </section>
+
+  <section class="panel">
+    <h2>Run history</h2>
+    <table id="runsTable">
+      <thead><tr><th>Timestamp</th><th>Commit</th><th>Firmware</th><th>Flash</th><th>Verdict</th><th>Passed</th><th>Total</th></tr></thead>
+      <tbody id="runsBody"></tbody>
+    </table>
+    <div id="runsEmpty" class="empty" style="display:none">No runs yet.</div>
+  </section>
+
+  <section class="panel" id="detail">
+    <h2>Run detail &mdash; <span id="detailTitle"></span></h2>
+    <table>
+      <thead><tr><th>Test case</th><th>Verdict</th><th>Duration (ms)</th><th>Log</th></tr></thead>
+      <tbody id="detailBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+/* Minimal chart drawing (no dependencies) - pass rate over runs */
+function drawChart(points) {
+  const canvas = document.getElementById("chart");
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height, pad = 32;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "#334155"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, H - pad); ctx.lineTo(W - pad, H - pad); ctx.stroke();
+  if (!points.length) return;
+  const step = (W - 2 * pad) / Math.max(points.length - 1, 1);
+  ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = pad + i * step, y = H - pad - (p.rate / 100) * (H - 2 * pad);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif";
+  points.forEach((p, i) => {
+    const x = pad + i * step, y = H - pad - (p.rate / 100) * (H - 2 * pad) - 8;
+    ctx.fillText(Math.round(p.rate) + "%", x - 14, y);
+  });
+}
+
+const $ = (id) => document.getElementById(id);
+const api = () => $("apiBase").value.replace(/\/$/, "");
+
+async function loadRuns() {
+  const tbody = $("runsBody");
+  tbody.innerHTML = "";
+  let runs = [];
+  try {
+    runs = await (await fetch(api() + "/api/runs")).json();
+  } catch (e) {
+    $("runsEmpty").style.display = "block";
+    $("runsEmpty").textContent = "Cannot reach API at " + api() + " - make sure server.py is running on the lab PC.";
+    return;
+  }
+  $("runsEmpty").style.display = runs.length ? "none" : "block";
+  runs.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.className = "run-row";
+    tr.innerHTML = `
+      <td>${new Date(r.timestamp).toLocaleString()}</td>
+      <td class="mono">${(r.commit_sha || "").slice(0, 7)}</td>
+      <td class="mono">${r.firmware_version || "-"}</td>
+      <td><span class="badge ${r.flash_ok ? "PASS" : "FAIL"}">${r.flash_ok ? "OK" : "FAIL"}</span></td>
+      <td><span class="badge ${r.overall_verdict}">${r.overall_verdict}</span></td>
+      <td>${r.passed}</td><td>${r.total}</td>`;
+    tr.onclick = () => loadDetail(r.run_id, r.commit_sha);
+    tbody.appendChild(tr);
+  });
+
+  // trend: pass rate over time (oldest first)
+  const trends = await (await fetch(api() + "/api/trends")).json();
+  const points = trends.map(t => ({ rate: t.total ? (t.passed / t.total) * 100 : 0 }));
+  drawChart(points);
+  $("trendEmpty").style.display = points.length ? "none" : "block";
+}
+
+async function loadDetail(runId, sha) {
+  const detail = await (await fetch(api() + "/api/runs/" + runId)).json();
+  $("detail").classList.add("open");
+  $("detailTitle").textContent = (sha || "").slice(0, 7);
+  const body = $("detailBody");
+  body.innerHTML = "";
+  detail.test_cases.forEach(tc => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${tc.name}</td>
+      <td><span class="badge ${tc.verdict}">${tc.verdict}</span></td>
+      <td>${tc.duration_ms ?? "-"}</td>
+      <td>${(tc.log || "").slice(0, 120)}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+$("apiBase").addEventListener("change", loadRuns);
+loadRuns();
+</script>
+</body>
+</html>

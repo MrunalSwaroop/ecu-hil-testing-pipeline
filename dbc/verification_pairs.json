@@ -1,0 +1,4 @@
+[
+  {"signal": "EngineSpeed", "data": [0xE8, 0x03], "physical": 1000.0},
+  {"signal": "EngineTemp", "data": [0x78], "physical": 80.0}
+]
