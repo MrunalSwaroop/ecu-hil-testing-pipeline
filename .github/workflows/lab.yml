@@ -35,8 +35,7 @@ jobs:
     name: HIL test on lab bench
     # NOTE: register this runner on your Windows lab PC (see docs/lab-runner-setup.md).
     # Until a runner tagged 'hil-bench' is online, this job is skipped and CI still passes.
-    runs-on: self-hosted
-    if: contains(runner.labels, 'hil-bench')
+    runs-on: [self-hosted, hil-bench]
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
